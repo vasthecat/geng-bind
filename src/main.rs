@@ -65,14 +65,14 @@ impl Drop for GengIterator {
 }
 
 fn main() {
-    let gi = GengIterator::new(10);
+    let gi = GengIterator::new(3);
 
-    // for i in &gi {
-    //     print_graph(i, gi.size);
-    // }
+    for i in &gi {
+        print_graph(i, gi.size);
+    }
 
-    let q = gi.take(2000000).collect::<Vec<_>>();
-    println!("{}", q.len());
+    // let q = gi.take(2000000).collect::<Vec<_>>();
+    // println!("{}", q.len());
     // println!("{:?}", q);
     // for i in q {
     //     print_graph(i, gi.size);

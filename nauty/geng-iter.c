@@ -1,5 +1,7 @@
-#include "gtools.h"
+#include "geng-iter.h"
+
 #include "geng.h"
+#include "gtools.h"
 #include <ucontext.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -27,7 +29,7 @@ printgraph(graph *g, int n)
 
 // TODO: probably don't need to name this function with macro
 void
-OUTPROC(__attribute__((unused)) FILE *outfile,
+outproc(__attribute__((unused)) FILE *outfile,
         graph *g, int n, struct geng_iterator *iter)
 {
     memcpy(&iter->batch[iter->batch_size * n], g, sizeof(set) * n);
@@ -37,11 +39,6 @@ OUTPROC(__attribute__((unused)) FILE *outfile,
     if (iter->batch_size == iter->batch_capacity)
         swapcontext(&iter->geng_worker, &iter->geng_user);
 }
-
-// TODO: probably don't need to name this function with macro
-// TODO: move to geng.h maybe?
-extern int
-GENG_MAIN(int argc, char *argv[]);
 
 // geng_iterator_init gives ownership of iterator memory to caller
 void
@@ -85,7 +82,7 @@ geng_iterator_create(struct geng_iterator **iterator_ptr,
     iterator->geng_worker.uc_link = &iterator->geng_user;
 
     makecontext(
-        &iterator->geng_worker, (void (*) (void)) GENG_MAIN,
+        &iterator->geng_worker, (void (*) (void)) geng_main,
         5, geng_argc, p_argv[0], p_argv[1], p_iter[0], p_iter[1]
     );
     swapcontext(&iterator->geng_user, &iterator->geng_worker);

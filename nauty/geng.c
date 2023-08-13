@@ -1,408 +1,4 @@
-/* TODO:
- *        add complements for ordinary graphs
- *        add 5-cycle rejection
- */
-
 /* geng.c  version 3.6; B D McKay, October 2022. */
-
-#define USAGE \
-"geng [-cCmtfkbd#D#] [-uygsnh] [-lvq] \n\
-              [-x#X#] n [mine[:maxe]] [res/mod] [file]"
-
-#define HELPTEXT \
-" Generate all graphs of a specified class.\n\
-\n\
-      n    : the number of vertices\n\
- mine:maxe : a range for the number of edges\n\
-              #:0 means '# or more' except in the case 0:0\n\
-   res/mod : only generate subset res out of subsets 0..mod-1\n\
-\n\
-     -c    : only write connected graphs\n\
-     -C    : only write biconnected graphs\n\
-     -t    : only generate triangle-free graphs\n\
-     -f    : only generate 4-cycle-free graphs\n\
-     -k    : only generate K4-free graphs\n\
-     -T    : only generate chordal graphs\n\
-     -S    : only generate split graphs\n\
-     -P    : only generate perfect graphs\n\
-     -F    : only generate claw-free graphs\n\
-     -b    : only generate bipartite graphs\n\
-                (-t, -f and -b can be used in any combination)\n\
-     -m    : save memory at the expense of time (only makes a\n\
-                difference in the absence of -b, -t, -f and n <= 28).\n\
-     -d#   : a lower bound for the minimum degree\n\
-     -D#   : an upper bound for the maximum degree\n\
-     -v    : display counts by number of edges\n\
-     -l    : canonically label output graphs\n\
-\n\
-     -u    : do not output any graphs, just generate and count them\n\
-     -g    : use graph6 output (default)\n\
-     -s    : use sparse6 output\n\
-     -h    : for graph6 or sparse6 format, write a header too\n\
-\n\
-     -q    : suppress auxiliary output (except from -v)\n\
-\n\
-  See program text for much more information.\n"
-
-
-/*  Parameters:
-
-             n    = the number of vertices (1..MAXN)
-                        Note that MAXN is limited to min(WORDSIZE,64)
-             mine = the minimum number of edges (no bounds if missing)
-             maxe = the maximum number of edges (same as mine if missing)
-                    0 means "infinity" except in the case "0-0"
-             mod, res = a way to restrict the output to a subset.
-                        All the graphs in G(n,mine..maxe) are divided into
-                        disjoint classes C(0,mod),C(1,mod),...,C(mod-1,mod),
-                        of very approximately equal size.
-                        Only the class C(res,mod) is written.
-
-                        If the -x or -X switch is used, they must have the 
-                        same value for different values of res; otherwise 
-                        the partitioning may not be valid.  In this case
-                        (-x,-X with constant value), the usual relationships 
-                        between modulo classes are obeyed; for example 
-                        C(3,4) = C(3,8) union C(7,8).  This is not true
-                        if 3/8 and 7/8 are done with -x or -X values
-                        different from those used for 3/4.
-
-             file = a name for the output file (stdout if missing or "-")
-
-             All switches can be concatenated or separate.  However, the
-             value of -d must be attached to the "d", and similarly for "x".
-
-             -c    : only write connected graphs
-             -C    : only write biconnected graphs
-             -t    : only generate triangle-free graphs
-             -f    : only generate 4-cycle-free graphs
-             -b    : only generate bipartite graphs
-                        (-t, -f and -b can be used in any combination)
-             -m    : save memory at expense of time (only makes a
-                        difference in the absence of -b, -t, -f and n <= 30).
-             -D<int> : specify an upper bound for the maximum degree.
-                     The value of the upper bound must be adjacent to
-                     the "D".  Example: -D6
-             -d<int> : specify a lower bound for the minimum degree.
-                     The value of the upper bound must be adjacent to
-                     the "d".  Example: -d6
-             -v    : display counts by number of edges
-             -l    : canonically label output graphs
-
-             -u    : do not output any graphs, just generate and count them
-             -g    : use graph6 output (default)
-             -s    : use sparse6 output
-             -n    : use nauty format instead of graph6 format for output
-             -y    : use the obsolete y-format for output
-             -h    : for graph6 or sparse6 format, write a header too
-
-             -q    : suppress auxiliary output (except from -v)
-
-             -x<int> : specify a parameter that determines how evenly
-                     the res/mod facility splits the graphs into subsets.
-                     High values mean more even splitting at slight cost
-                     to the total time.  The default is 20*mod, and the
-                     the legal minimum is 3*mod.  More information is given 
-                     under "res/mod" above.
-             -X<lev> : move the initial splitting level higher by <lev>,
-                     in order to force more even splitting at the cost
-                     of speed.  Default is -X0.  More information is given
-                     under "res/mod" above.
-
-Output formats.
-
-  The output format is determined by the mutually exclusive switches
-  -u, -n, -y, -g and -s.  The default is -g.
-
-  -u suppresses output of graphs completely.
-
-  -s and -g specify sparse6 and graph6 format, defined elsewhere.
-  In this case a header is also written if -h is present.
-
-  If -y is present, graphs will be written in y-format.
-  y-format is obsolete and only provided for backwards compatibility.
-
-    Each graph occupies one line with a terminating newline.
-    Except for the newline, each byte has the format  01xxxxxx, where
-    each "x" represents one bit of data.
-    First byte:  xxxxxx is the number of vertices n
-    Other ceiling(n(n-1)/12) bytes:  These contain the upper triangle of
-    the adjacency matrix in column major order.  That is, the entries
-    appear in the order (0,1),(0,2),(1,2),(0,3),(1,3),(2,3),(0,4),... .
-    The bits are used in left to right order within each byte.
-    Any unused bits on the end are set to zero.
-
-  If -n is present, any output graphs are written in nauty format.
-
-    For a graph of n vertices, the output consists of one int giving
-    the number of vertices, and n setwords containing the adjacency
-    matrix.  Note that this is system dependent (i.e. don't use it).
-    It will not work properly if the output is to stdout and your
-    system distinguishes binary and text files.
-
-OUTPROC feature.
-
-   By defining the C preprocessor variable OUTPROC at compile time
-   (for Unix the syntax is -DOUTPROC=procname on the cc command),
-   geng can be made to call a procedure of your manufacture with
-   each output graph instead of writing anything. Your procedure
-   needs to have type void and the argument list (FILE *f, graph
-   *g, int n). f is a stream open for writing, g is the graph in
-   nauty format, and n is the number of vertices. Your procedure
-   can be in a separate file so long as it is linked with geng. The
-   global variables sparse6, graph6, quiet, nooutput, nautyformat,
-   and canonise (all type boolean) can be used to test
-   for the presence of the flags -s, -g, -q, -u, -n, and -l,
-   respectively. If -l is present, the group size and similar
-   details can be found in the global variable nauty_stats.
-
-PRUNE feature.
-
-   By defining the C preprocessor variable PRUNE at compile time, geng
-   can be made to call
-        int PRUNE(graph *g,int n,int maxn) 
-   for each intermediate (and final) graph, and reject it if 
-   the value returned is nonzero.  The arguments are:
-
-     g      = the graph in nauty format (m=1)
-     n      = the number of vertices in g
-     maxn   = the number of vertices for output 
-              (the value you gave on the command line to geng)
-
-   geng constructs the graph starting with vertex 0, then adding
-   vertices 1,2,3,... in that order.  Each graph in the sequence is
-   an induced subgraph of all later graphs in the sequence.
-
-   A call is made for all orders from 1 to maxn.  In testing for
-   a uniform property (such as a forbidden subgraph or forbidden
-   induced subgraph) it might save time to notice that a call to
-   PRUNE for n implies that the call for n-1 already passed. 
-
-   For very fast tests, it might be worthwhile using PREPRUNE as
-   well or instead. It has the same meaning but is applied earlier
-   and more often.
-
-   If -c or -C is given, the connectivity test is done before
-   PRUNE but not necessarily before PREPRUNE.
-
-   Some parameters are available in global variables:
-   geng_mindeg, geng_maxdeg, geng_mine, geng_maxe, geng_connec;
-  
-SUMMARY
-
-   If the C preprocessor variable SUMMARY is defined at compile time, the
-   procedure SUMMARY(nauty_counter nout, double cpu) is called just before
-   the program exits.  The purpose is to allow reporting of statistics
-   collected by PRUNE or OUTPROC.  The values nout and cpu are the output
-   count and cpu time reported on the >Z line.
-   Output should be written to stderr.
-
-INSTRUMENT feature.
-
-   If the C preprocessor variable INSTRUMENT is defined at compile time,
-   extra code is inserted to collect statistics during execution, and
-   more information is written to stderr at termination.
-
-CALLING FROM A PROGRAM
-
-   It is possible to call geng from another program instead of using it
-   as a stand-alone program.  The main requirement is to change the name
-   of the main program to be other than "main".  This is done by defining
-   the preprocessor variable GENG_MAIN.  You might also like to define
-   OUTPROC to be the name of a procedure to receive the graphs. To call
-   the program you need to define an argument list argv[] consistent with
-   the usual one; don't forget that argv[0] is the command name and not
-   the first argument.  The value of argc is the number of strings in
-   argv[]; that is, one more than the number of arguments.  See the
-   sample program callgeng.c.
-
-   You can also call geng from multiple threads at once, see the sample
-   program callgeng2.c.
-
-**************************************************************************
-
-Counts and sample performance statistics.
-
-    Here we give some graph counts and approximate execution times
-    on a Linux computer with Intel Core i7-4790 nominally 3.6GHz,
-    compiled with gcc 6.2.0.
-    Times are with the -u option (generate but don't write); add
-    0.2-0.3 microseconds per graph for output to a file.
-
-
-      General Graphs                     C3-free Graphs (-t)
-
-      1              1                    1              1
-      2              2                    2              2
-      3              4                    3              3
-      4             11                    4              7
-      5             34                    5             14
-      6            156                    6             38
-      7           1044                    7            107
-      8          12346                    8            410
-      9         274668   0.08 sec         9           1897
-     10       12005168   2.7 sec         10          12172  
-     11     1018997864   207 sec         11         105071   0.09 sec
-     12   165091172592   9 hr            12        1262180   0.8 sec
-     13 50502031367952   108 days        13       20797002   11 sec
-    These can be done in about half      14      467871369   220 sec
-    the time by setting the edge limit   15    14232552452   1.7 hr
-    half way then adding complements.    16   581460254001   65 hr
-                                         17 31720840164950   145 days
-
-
-     C4-free Graphs  (-f)              (C3,C4)-free Graphs (-tf)
-
-      1             1                      1             1
-      2             2                      2             2 
-      3             4                      3             3 
-      4             8                      4             6
-      5            18                      5            11
-      6            44                      6            23
-      7           117                      7            48 
-      8           351                      8           114 
-      9          1230                      9           293
-     10          5069                     10           869
-     11         25181   0.04 sec          11          2963 
-     12        152045   0.17 sec          12         12066   0.03 sec
-     13       1116403   1.0 sec           13         58933   0.10 sec
-     14       9899865   7.5 sec           14        347498   0.5 sec
-     15     104980369   71 sec            15       2455693   2.7 sec
-     16    1318017549   14 min            16      20592932   19 sec
-     17   19427531763   3.4 hr            17     202724920   170 sec
-     18  333964672216   56 hr             18    2322206466   32 min
-     19 6660282066936   45 days           19   30743624324   7 hr
-                                          20  468026657815   4 days
-                                          21 8161170076257   106 days
-
-
-     Bipartite Graphs (-b)            C4-free Bipartite Graphs (-bf)
-
-      1              1                      1             1
-      2              2                      2             2
-      3              3                      3             3
-      4              7                      4             6
-      5             13                      5            10
-      6             35                      6            21
-      7             88                      7            39
-      8            303                      8            86
-      9           1119                      9           182
-     10           5479                     10           440
-     11          32303   0.03 sec          11          1074
-     12         251135   2.3 sec           12          2941
-     13        2527712   1.7 sec           13          8424   0.04 sec
-     14       33985853   19 sec            14         26720   0.11 sec
-     15      611846940   4.9 min           15         90883   0.33 sec
-     16    14864650924   1.8 hr            16        340253   1.1 sec
-     17   488222721992   2.4 days          17       1384567   3.7 sec
-     18 21712049275198   105 days          18       6186907   14 sec
-                                           19      30219769   59 sec
-                                           20     161763233   280 sec
-                                           21     946742190   24 min
-                                           22    6054606722   2.5 hr
-                                           23   42229136988   17 hr
-                                           24  320741332093   125 hr
-                                           25 2648348712904   58 days
-
-If you know any more of these counts, please tell me.
-
-**************************************************************************
-
-Hints:
-
-To make all the graphs of order n, without restriction on type,
-it is fastest to make them up to binomial(n,2)/2 edges and append
-the complement of those with strictly less than binomial(n,2)/2 edges.
-
-If it is necessary to split the computation into pieces, it is more
-efficient to use the res/mod feature than to split by numbers of edges.
-
-**************************************************************************
-
-    Author:   B. D. McKay, Sep 1991 and many later dates.
-              Copyright  B. McKay (1991-2018).  All rights reserved.
-              This software is subject to the conditions and waivers
-              detailed in the file nauty.h.
-
-    Changes:  Nov 18, 1991 : added -d switch
-                             fixed operation for n=16
-              Nov 26, 1991 : added OUTPROC feature
-              Nov 29, 1991 : -c implies mine >= n-1
-              Jan  8, 1992 : make writeny() not static
-              Jan 10, 1992 : added -n switch
-              Feb  9, 1992 : fixed case of n=1
-              Feb 16, 1992 : changed mine,maxe,maxdeg testing
-              Feb 19, 1992 : added -b, -t and -u options
-                             documented OUTPROC and added external
-                                 declaration for it.
-              Feb 20, 1992 : added -v option
-              Feb 22, 1992 : added INSTRUMENT compile-time option
-              Feb 23, 1992 : added xbnds() for more effective pruning
-              Feb 24, 1992 : added -l option
-              Feb 25, 1992 : changed writenauty() to use fwrite()
-              Mar 11, 1992 : completely revised many parts, incl
-                             new refinement procedure for fast rejection,
-                             distance invariant for regular graphs
-              May 19, 1992 : modified userautomproc slightly.  xorb[]
-                             is no longer idempotent but it doesn't matter.
-                             Speed-up of 2-5% achieved.
-              June 5, 1993 : removed ";" after "CPUDEFS" to avoid illegal
-                             empty declaration.
-              Nov 24, 1994 : tested for 0 <= res < mod
-
-              Apr 13, 1996 : Major overhaul.  Renamed "geng".
-                             Changed argument syntax.
-                             Removed 16-vertex limit.
-                             Added -s, -m, -x.  Allowed combinations.
-                             Replaced code for non-general graphs.
-                             Very many small changes.
-              Jul 12, 1996 : Changed semantics of -x and res/mod.
-                             Changed >A line and added fflush()/
-                             All switches can be concatenated or not.
-              Aug 16, 1996 : Added -X switch and PRUNE() feature.
-                             Fixed case of argument 0-0.
-              Sep 22, 1996 : Improved 1-2% by tweaking refinex().
-              Jan 21, 1997 : Renamed to geng.  
-                             Changed -s to -f, and added -sghq.
-              Sep  7, 1997 : Fixed WORDSIZE=16 problems.
-              Sep 22, 1997 : Use "wb" open for nautyformat.
-              Jan 26, 1998 : Added SUMMARY feature.
-              Mar  4, 1998 : Added -C.
-              Mar 12, 1998 : Moved stats to nauty_stats.
-              Jan  1, 2000 : Changed -d to -D and added -d.
-              Feb 24, 2000 : Raised limit to 32 vertices.
-              Mar  3, 2000 : Made some counts into unsigned long.
-                             (Includes first arg to SUMMARY.)
-              Mar 12, 2000 : Used bigint for counts that may exceed 2^32.
-                             Now all counts from very long runs are ok.
-              Oct 12, 2000 : Changed maxef[32] to 92 after confirmation
-                             from Yang Yuansheng.  The old value of 93 was
-                             valid but 92 is slightly more efficient.
-              Nov 16, 2000 : Used fuction prototypes.
-              Jul 31, 2001 : Added PREPRUNE
-               May 7, 2004 : Complete all function prototypes
-              Nov 24, 2004 : Force -m for very large sizes
-                             Add -bf automatically if generating trees
-               Apr 1, 2007 : Write >A in one fputs() to try to reduce
-                             mixing of outputs in multi-process pipes.
-              Sep 19, 2007 : Force -m for n > 28 regardless of word size.
-              Nov 29, 2008 : Slightly improved connectivity testing.
-              Mar 3,  2015 : Improve maxdeg tweaking.
-              Jan 18, 2016 : Replace bigint by nauty_counter.
-               Mar 8, 2018 : Can now compile for MAXN up to WORDSIZE.
-                             Use setword instead of unsigned for xword.
-                             Revised splitting level.
-                             Updated sample execution times.
-              Mar 10, 2018 : Fix overflow at impossibly large n, maxdeg.
-              Jan 14, 2019 : Define geng_mindeg, geng_maxdeg, geng_mine, geng_maxe.
-               Jun 1, 2021 : Define geng_connec.
-               Jun 4, 2021 : Improve performance for -c and -C with small edge count.
-              Jun 21, 2021 : K1 is not 2-connected.
-              May 15, 2022 : findmax() now deposits -1 at the end of the extended
-                              sequence in case geng is being called as a function.
-              Oct 10, 2022 : Obsolete y-format removed
-
-**************************************************************************/
 
 #define NAUTY_PGM  1   /* 1 = geng, 2 = genbg, 3 = gentourng, 4 = gentreeg */
 
@@ -417,17 +13,10 @@ efficient to use the res/mod feature than to split by numbers of edges.
 #define ONE_WORD_SETS
 #include "gtools.h"   /* which includes nauty.h and stdio.h */
 #include "geng.h"
+#include "geng-iter.h"
 #include <stdint.h>
 
-/* No need for TLS if not calling from a program. */
-#ifndef GENG_MAIN
-#undef TLS_ATTR
-#define TLS_ATTR
-#endif
-
 typedef setword xword;
-
-static TLS_ATTR void (*outproc)(FILE*,graph*,int,struct geng_iterator *);
 
 static TLS_ATTR FILE *outfile;           /* file for output graphs */
 static TLS_ATTR int connec;              /* 1 for -c, 2 for -C, 0 for neither */
@@ -520,9 +109,6 @@ static TLS_ATTR int maxebf[65] =    /* max edges for -bf */
 #include PLUGIN
 #endif
 
-#ifdef OUTPROC
-extern void OUTPROC(FILE*,graph*,int);
-#endif
 #ifdef PRUNE
 extern int PRUNE(graph*,int,int);
 #endif
@@ -552,51 +138,6 @@ findmaxe(int *table, int n)
     for ( ; i <= MAXN; ++i) table[i] = EXTEND(table,i);
 
     return table[n];
-}
-
-/************************************************************************/
-
-void
-writeg6x(FILE *f, graph *g, int n)
-/* write graph g (n vertices) to file f in graph6 format */
-{
-    writeg6(f,g,1,n);
-}
-
-/************************************************************************/
-
-void
-writes6x(FILE *f, graph *g, int n)
-/* write graph g (n vertices) to file f in sparse6 format */
-{
-    writes6(f,g,1,n);
-}
-
-/***********************************************************************/
-
-static void
-nullwrite(FILE *f, graph *g, int n)
-/* don't write graph g (n vertices) to file f */
-{
-}
-
-/***********************************************************************/
-
-void
-writenauty(FILE *f, graph *g, int n)
-/* write graph g (n vertices) to file f in nauty format.
-   Each graph is preceded by the number of vertices. */
-{
-    int nn;
-
-    nn = n;
-
-    if (fwrite((char *)&nn,sizeof(int),(size_t)1,f) != 1 ||
-          fwrite((char*)g,sizeof(graph),(size_t)n,f) != n)
-    {
-        fprintf(stderr,">E writenauty : error on writing file\n");
-        exit(2);
-    }
 }
 
 /*********************************************************************/
@@ -705,20 +246,6 @@ isbiconnected(graph *g, int n)
             if (lp[w] < lp[v])    lp[v] = lp[w];
         }
     }
-}
-
-/**********************************************************************/
-
-static void
-gcomplement(graph *g, graph *gc, int n)
-/* Take the complement of g and put it in gc */
-{
-    int i;
-    setword all;
-
-    all = ~(setword)BITMASK(n-1);
-    for (i = 0; i < n; ++i)
-        gc[i] = g[i] ^ all ^ bit[i];
 }
 
 /**********************************************************************/
@@ -2103,7 +1630,7 @@ spaextend(graph *g, int n, int *deg, int ne, boolean rigid,
                         haschild = TRUE;
 #endif
                         ++ecount[ne+xc];
-                        (*outproc)(outfile,canonise ? gcan : gx,nx, iter);
+                        outproc(outfile,canonise ? gcan : gx,nx, iter);
                     }
                 }
             }
@@ -2225,7 +1752,7 @@ genextend(graph *g, int n, int *deg, int ne, boolean rigid, int xlb, int xub, st
                         haschild = TRUE;
 #endif
                         ++ecount[ne+xc];
-                        (*outproc)(outfile,canonise ? gcan : gx,nx, iter);
+                        outproc(outfile,canonise ? gcan : gx,nx, iter);
                     }
                 }
         }
@@ -2272,10 +1799,12 @@ genextend(graph *g, int n, int *deg, int ne, boolean rigid, int xlb, int xub, st
 /**************************************************************************/
 /**************************************************************************/
 
-// TODO: probably rework
-#ifdef GENG_MAIN
 void
-GENG_MAIN(int argc, uint32_t argv1, uint32_t argv2, uint32_t iter1, uint32_t iter2)
+geng_main(
+    int argc,
+    uint32_t argv1, uint32_t argv2,
+    uint32_t iter1, uint32_t iter2
+)
 {
     // TODO: make macro
     size_t *p_argv = (size_t *) (((size_t) argv1) | (((size_t) argv2) << 32));
@@ -2284,11 +1813,7 @@ GENG_MAIN(int argc, uint32_t argv1, uint32_t argv2, uint32_t iter1, uint32_t ite
     size_t *p_iter = (size_t *) (((size_t) iter1) | (((size_t) iter2) << 32));
     struct geng_iterator *iter = (struct geng_iterator *) *p_iter;
     iter->generation_done = false;
-#else
-int
-main(int argc, char *argv[])
-{
-#endif
+
     char *arg;
     boolean badargs,gote,gotmr,gotf,gotd,gotD,gotx,gotX;
     boolean secret,connec1,connec2,safe,sparse;
@@ -2475,22 +2000,12 @@ PLUGIN_SWITCHES
 
     if (badargs)
     {
-        fprintf(stderr,">E Usage: %s\n",USAGE);
-        GETHELP;
+        fprintf(stderr,">E Bad arguments\n");
         exit(1);
     }
 
     if ((nautyformat!=0) + (graph6!=0) + (sparse6!=0) + (nooutput!=0) > 1)
         gt_abort(">E geng: -ungs are incompatible\n");
-
-#ifdef OUTPROC
-    outproc = OUTPROC;
-#else
-    if (nautyformat)   outproc = writenauty;
-    else if (nooutput) outproc = nullwrite;
-    else if (sparse6)  outproc = writes6x;
-    else               outproc = writeg6x;
-#endif
 
 #ifdef PLUGIN_INIT
 PLUGIN_INIT
@@ -2599,7 +2114,7 @@ PLUGIN_INIT
         if (res == 0 && connec < 2)
         {
             ++ecount[0];
-            (*outproc)(outfile,g,1,iter);
+            outproc(outfile,g,1,iter);
         }
     }
     else
@@ -2706,7 +2221,6 @@ PLUGIN_INIT
                 nout,t2-t1);
     }
 
-#ifdef GENG_MAIN
     for (i = 1; i < maxn; ++i)
         if (sparse)
         {
@@ -2721,7 +2235,4 @@ PLUGIN_INIT
             free(data[i].xcard);
         }
     iter->generation_done = true;
-#else
-    exit(0);
-#endif
 }

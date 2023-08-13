@@ -1,15 +1,13 @@
-#include "gtools.h"
-#include <ucontext.h>
-#include <stdbool.h>
+#ifndef GENG_H
+#define GENG_H
 
-struct geng_iterator
-{
-    ucontext_t geng_worker, geng_user;
-    char geng_stack[1 << 20];
-    int graph_size;
-    bool generation_done;
-    bool iteration_done;
-    int batch_size;
-    int batch_capacity;
-    set *batch;
-};
+#include <stdint.h>
+
+void
+geng_main(
+    int argc,
+    uint32_t argv1, uint32_t argv2,
+    uint32_t iter1, uint32_t iter2
+);
+
+#endif // GENG_H

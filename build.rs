@@ -14,12 +14,9 @@ fn main() {
         .flag("-Wno-unused-parameter")
         .flag("-Wno-sign-compare")
         .flag("-Wno-unused-variable")
-        .flag("-Wno-unused-function")
         .define("_XOPEN_SOURCE", None)
         .define("MAXN", "WORDSIZE")
         .define("WORDSIZE", "32")
-        .define("OUTPROC", "myoutproc")
-        .define("GENG_MAIN", "geng_main")
         .compile("geng");
 
     println!("cargo:rerun-if-changed=./nauty/geng.c");
