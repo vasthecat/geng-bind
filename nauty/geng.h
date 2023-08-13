@@ -11,8 +11,5 @@ struct geng_iterator
     bool iteration_done;
     int batch_size;
     int batch_capacity;
-    graph **batch;
-
-    // TODO: remove
-    graph *cur;
+    set *batch;
 };

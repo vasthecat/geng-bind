@@ -419,8 +419,6 @@ efficient to use the res/mod feature than to split by numbers of edges.
 #include "geng.h"
 #include <stdint.h>
 
-struct geng_iterator;
-
 /* No need for TLS if not calling from a program. */
 #ifndef GENG_MAIN
 #undef TLS_ATTR
@@ -2279,6 +2277,7 @@ genextend(graph *g, int n, int *deg, int ne, boolean rigid, int xlb, int xub, st
 void
 GENG_MAIN(int argc, uint32_t argv1, uint32_t argv2, uint32_t iter1, uint32_t iter2)
 {
+    // TODO: make macro
     size_t *p_argv = (size_t *) (((size_t) argv1) | (((size_t) argv2) << 32));
     char **argv = (char **) *p_argv;
 

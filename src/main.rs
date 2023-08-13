@@ -11,6 +11,7 @@ extern "C" {
         batch_size: usize,
     );
     fn geng_iterator_next(iter: *const geng_iterator, g: *mut u32) -> bool;
+    fn geng_iterator_destroy(iter: *const geng_iterator);
     fn printgraph(g: *const u32, n: usize);
 }
 
@@ -29,7 +30,7 @@ impl GengIterator {
     fn new(n: usize) -> GengIterator {
         let iter = unsafe {
             let iter: *mut geng_iterator = ptr::null_mut();
-            geng_iterator_create(&iter, n, 100);
+            geng_iterator_create(&iter, n, 10000);
             Box::from_raw(iter)
         };
         GengIterator { size: n, iter }
@@ -54,15 +55,26 @@ impl Iterator for &GengIterator {
     }
 }
 
-fn main() {
-    let gi = GengIterator::new(2);
+impl Drop for GengIterator {
+    fn drop(&mut self) {
+        unsafe {
+            let ptr: *const geng_iterator = &*self.iter;
+            geng_iterator_destroy(ptr);
+        }
+    }
+}
 
-    // let q = gi.take(2).collect::<Vec<_>>();
+fn main() {
+    let gi = GengIterator::new(10);
+
+    // for i in &gi {
+    //     print_graph(i, gi.size);
+    // }
+
+    let q = gi.take(2000000).collect::<Vec<_>>();
+    println!("{}", q.len());
     // println!("{:?}", q);
     // for i in q {
     //     print_graph(i, gi.size);
     // }
-    for i in &gi {
-        print_graph(i, gi.size);
-    }
 }
