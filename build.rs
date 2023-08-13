@@ -10,7 +10,7 @@ fn main() {
     cc::Build::new()
         .file("nauty/geng.c")
         .file("nauty/geng-iter.c")
-        .flag("-O3")
+        // .flag("-O3")
         .flag("-Wno-unused-parameter")
         .flag("-Wno-sign-compare")
         .flag("-Wno-unused-variable")

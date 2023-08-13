@@ -1,16 +1,8 @@
 #include "gtools.h"
+#include "geng.h"
 #include <ucontext.h>
 #include <stdint.h>
 #include <stdbool.h>
-
-// TODO: move that to struct so that this code would be thread-safe (probably)
-static unsigned long counter;
-static graph *cur;
-static int gn;
-extern int generate_done;
-int iter_done;
-ucontext_t geng_worker, geng_user;
-char geng_stack[1 << 20];
 
 // TODO: only on macos
 #pragma GCC diagnostic push
@@ -35,11 +27,11 @@ printgraph(graph *g, int n)
 
 // TODO: probably don't need to name this function with macro
 void
-OUTPROC(__attribute__((unused)) FILE *outfile, graph *g, int n)
+OUTPROC(__attribute__((unused)) FILE *outfile,
+        graph *g, int n, struct geng_iterator *iter)
 {
-    cur = g;
-    gn = n;
-    ++counter;
+    iter->cur = g;
+    iter->graph_size = n;
 
     // TODO: add support for generating graphs in batches (for speed)
 #if 0
@@ -51,25 +43,26 @@ OUTPROC(__attribute__((unused)) FILE *outfile, graph *g, int n)
         i = 0;
     }
 #else
-    swapcontext(&geng_worker, &geng_user);
+    swapcontext(&iter->geng_worker, &iter->geng_user);
 #endif
 }
 
 // TODO: probably don't need to name this function with macro
-// TODO: geng.h maybe?
+// TODO: move to geng.h maybe?
 extern int
 GENG_MAIN(int argc, char *argv[]);
 
-struct geng_iterator
-{
-    ucontext_t geng_worker, geng_user;
-    char geng_stack[1 << 20];
-};
-
+// geng_iterator_init gives ownership of iterator memory to caller
 void
-geng_iterator_init(__attribute__((unused)) struct geng_iterator *iter, int n)
+geng_iterator_create(struct geng_iterator **iterator_ptr,
+                     size_t graph_size,
+                     size_t batch_capacity)
 {
-    iter_done = 0;
+    // TODO: malloc geng_iterator batch
+    *iterator_ptr = malloc(sizeof(struct geng_iterator));
+    
+    struct geng_iterator *iterator = *iterator_ptr;
+    iterator->iteration_done = false;
 
     // TODO: add support for more arguments
     int geng_argc = 3;
@@ -78,7 +71,7 @@ geng_iterator_init(__attribute__((unused)) struct geng_iterator *iter, int n)
     geng_argv[0] = "geng";
     geng_argv[1] = "-q";
     char n_str[20];
-    snprintf(n_str, sizeof(n_str), "%u", n);
+    snprintf(n_str, sizeof(n_str), "%zu", graph_size);
     geng_argv[2] = n_str;
     geng_argv[3] = NULL;
 
@@ -86,29 +79,34 @@ geng_iterator_init(__attribute__((unused)) struct geng_iterator *iter, int n)
     p_argv[0] = (uint32_t) (((size_t) &geng_argv) & ((1llu << 32) - 1llu));
     p_argv[1] = ((size_t) &geng_argv) >> 32;
 
-    counter = 0;
+    uint32_t p_iter[2];
+    p_iter[0] = (uint32_t) (((size_t) &iterator) & ((1llu << 32) - 1llu));
+    p_iter[1] = ((size_t) &iterator) >> 32;
 
-    getcontext(&geng_user);
-    geng_worker = geng_user;
-    geng_worker.uc_stack.ss_sp = geng_stack;
-    geng_worker.uc_stack.ss_size = sizeof(geng_stack);
-    geng_worker.uc_link = &geng_user;
+    getcontext(&iterator->geng_user);
+    iterator->geng_worker = iterator->geng_user;
+    iterator->geng_worker.uc_stack.ss_sp = iterator->geng_stack;
+    iterator->geng_worker.uc_stack.ss_size = sizeof(iterator->geng_stack);
+    iterator->geng_worker.uc_link = &iterator->geng_user;
 
-    makecontext(&geng_worker, (void (*) (void)) GENG_MAIN, 3, geng_argc, p_argv[0], p_argv[1]);
-    swapcontext(&geng_user, &geng_worker);
+    makecontext(
+        &iterator->geng_worker, (void (*) (void)) GENG_MAIN,
+        5, geng_argc, p_argv[0], p_argv[1], p_iter[0], p_iter[1]
+    );
+    swapcontext(&iterator->geng_user, &iterator->geng_worker);
     free(geng_argv);
 }
 
 bool
-geng_iterator_next(__attribute__((unused)) struct geng_iterator *iter, graph *g)
+geng_iterator_next(struct geng_iterator *iter, graph *g)
 {
-    if (iter_done == 1) return false;
+    if (iter->iteration_done) return false;
     else
     {
-        memcpy(g, cur, sizeof(set) * gn);
-        swapcontext(&geng_user, &geng_worker);
-        if (iter_done == 0 && generate_done == 1)
-            iter_done = 1;
+        memcpy(g, iter->cur, sizeof(set) * iter->graph_size);
+        swapcontext(&iter->geng_user, &iter->geng_worker);
+        if (!iter->iteration_done && iter->generation_done)
+            iter->iteration_done = true;
         return true;
     }
 }

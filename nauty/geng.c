@@ -416,8 +416,10 @@ efficient to use the res/mod feature than to split by numbers of edges.
 
 #define ONE_WORD_SETS
 #include "gtools.h"   /* which includes nauty.h and stdio.h */
+#include "geng.h"
+#include <stdint.h>
 
-int generate_done;
+struct geng_iterator;
 
 /* No need for TLS if not calling from a program. */
 #ifndef GENG_MAIN
@@ -427,7 +429,7 @@ int generate_done;
 
 typedef setword xword;
 
-static TLS_ATTR void (*outproc)(FILE*,graph*,int);
+static TLS_ATTR void (*outproc)(FILE*,graph*,int,struct geng_iterator *);
 
 static TLS_ATTR FILE *outfile;           /* file for output graphs */
 static TLS_ATTR int connec;              /* 1 for -c, 2 for -C, 0 for neither */
@@ -2030,7 +2032,8 @@ xbnds(int n, int ne, int dmax)
 
 static void
 spaextend(graph *g, int n, int *deg, int ne, boolean rigid,
-      int xlb, int xub, void (*makeh)(graph*,xword*,int))
+      int xlb, int xub, void (*makeh)(graph*,xword*,int),
+      struct geng_iterator *iter)
 /* extend from n to n+1 -- version for restricted graphs */
 {
     xword x,d,dlow;
@@ -2102,7 +2105,7 @@ spaextend(graph *g, int n, int *deg, int ne, boolean rigid,
                         haschild = TRUE;
 #endif
                         ++ecount[ne+xc];
-                        (*outproc)(outfile,canonise ? gcan : gx,nx);
+                        (*outproc)(outfile,canonise ? gcan : gx,nx, iter);
                     }
                 }
             }
@@ -2136,7 +2139,7 @@ spaextend(graph *g, int n, int *deg, int ne, boolean rigid,
 #ifdef INSTRUMENT
                     haschild = TRUE;
 #endif
-                    spaextend(gx,nx,degx,ne+xc,rigidx,xlbx,xubx,makeh);
+                    spaextend(gx,nx,degx,ne+xc,rigidx,xlbx,xubx,makeh,iter);
                 }
             }
         }
@@ -2152,7 +2155,7 @@ spaextend(graph *g, int n, int *deg, int ne, boolean rigid,
 /**************************************************************************/
 
 static void
-genextend(graph *g, int n, int *deg, int ne, boolean rigid, int xlb, int xub)
+genextend(graph *g, int n, int *deg, int ne, boolean rigid, int xlb, int xub, struct geng_iterator *iter)
 /* extend from n to n+1 -- version for general graphs */
 {
     xword x,d,dlow;
@@ -2224,7 +2227,7 @@ genextend(graph *g, int n, int *deg, int ne, boolean rigid, int xlb, int xub)
                         haschild = TRUE;
 #endif
                         ++ecount[ne+xc];
-                        (*outproc)(outfile,canonise ? gcan : gx,nx);
+                        (*outproc)(outfile,canonise ? gcan : gx,nx, iter);
                     }
                 }
         }
@@ -2256,7 +2259,7 @@ genextend(graph *g, int n, int *deg, int ne, boolean rigid, int xlb, int xub)
 #ifdef INSTRUMENT
                 haschild = TRUE;
 #endif
-                genextend(gx,nx,degx,ne+xc,rigidx,xlbx,xubx);
+                genextend(gx,nx,degx,ne+xc,rigidx,xlbx,xubx,iter);
             }
         }
 
@@ -2274,12 +2277,14 @@ genextend(graph *g, int n, int *deg, int ne, boolean rigid, int xlb, int xub)
 // TODO: probably rework
 #ifdef GENG_MAIN
 void
-GENG_MAIN(int geng_argc, unsigned int argv1, unsigned int argv2)
+GENG_MAIN(int argc, uint32_t argv1, uint32_t argv2, uint32_t iter1, uint32_t iter2)
 {
-    int argc = geng_argc;
     size_t *p_argv = (size_t *) (((size_t) argv1) | (((size_t) argv2) << 32));
     char **argv = (char **) *p_argv;
-    generate_done = 0;
+
+    size_t *p_iter = (size_t *) (((size_t) iter1) | (((size_t) iter2) << 32));
+    struct geng_iterator *iter = (struct geng_iterator *) *p_iter;
+    iter->generation_done = false;
 #else
 int
 main(int argc, char *argv[])
@@ -2297,7 +2302,6 @@ main(int argc, char *argv[])
     double t1,t2;
     char msg[201];
 
-    /* HELP; PUTVERSION; */
     nauty_check(WORDSIZE,1,MAXN,NAUTYVERSIONID);
 
     badargs = FALSE;
@@ -2596,7 +2600,7 @@ PLUGIN_INIT
         if (res == 0 && connec < 2)
         {
             ++ecount[0];
-            (*outproc)(outfile,g,1);
+            (*outproc)(outfile,g,1,iter);
         }
     }
     else
@@ -2633,25 +2637,31 @@ PLUGIN_INIT
             if (bipartite)
                 if (squarefree)
                     spaextend(g,1,deg,0,TRUE,
-                                    data[1].xlb,data[1].xub,makeb6graph);
+                                    data[1].xlb,data[1].xub,makeb6graph,
+                                    iter);
                 else
                     spaextend(g,1,deg,0,TRUE,
-                                    data[1].xlb,data[1].xub,makebgraph);
+                                    data[1].xlb,data[1].xub,makebgraph,
+                                    iter);
             else if (trianglefree)
                 if (squarefree)
                     spaextend(g,1,deg,0,TRUE,
-                                    data[1].xlb,data[1].xub,makeg5graph);
+                                    data[1].xlb,data[1].xub,makeg5graph,
+                                    iter);
                 else
                     spaextend(g,1,deg,0,TRUE,
-                                    data[1].xlb,data[1].xub,makexgraph);
+                                    data[1].xlb,data[1].xub,makexgraph,
+                                    iter);
             else if (squarefree)
                 spaextend(g,1,deg,0,TRUE,
-                                    data[1].xlb,data[1].xub,makesgraph);
+                                    data[1].xlb,data[1].xub,makesgraph,
+                                    iter);
             else if (savemem)
                 spaextend(g,1,deg,0,TRUE,
-                                    data[1].xlb,data[1].xub,make0graph);
+                                    data[1].xlb,data[1].xub,make0graph,
+                                    iter);
             else
-                genextend(g,1,deg,0,TRUE,data[1].xlb,data[1].xub);
+                genextend(g,1,deg,0,TRUE,data[1].xlb,data[1].xub,iter);
         }
     }
     t2 = CPUTIME;
@@ -2711,9 +2721,7 @@ PLUGIN_INIT
             free(data[i].xinv);
             free(data[i].xcard);
         }
-    generate_done = 1;
-    // TODO: probably rework
-    /* return 0; */
+    iter->generation_done = true;
 #else
     exit(0);
 #endif

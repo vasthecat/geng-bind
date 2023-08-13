@@ -5,37 +5,47 @@ use std::ptr;
 enum geng_iterator {}
 
 extern "C" {
-    fn geng_iterator_init(iter: *const geng_iterator, n: i32);
-    fn geng_iterator_next(iter: *const geng_iterator, g: *mut i32) -> bool;
-    fn printgraph(g: *const i32, n: i32);
+    fn geng_iterator_create(
+        iter: *const *mut geng_iterator,
+        graph_size: usize,
+        batch_size: usize,
+    );
+    fn geng_iterator_next(iter: *const geng_iterator, g: *mut u32) -> bool;
+    fn printgraph(g: *const u32, n: usize);
 }
 
-fn print_graph(g: Vec<i32>, n: usize) {
+fn print_graph(g: Vec<u32>, n: usize) {
     unsafe {
-        printgraph(g.as_ptr(), n as i32);
+        printgraph(g.as_ptr(), n);
     }
 }
 
 struct GengIterator {
     pub size: usize,
+    iter: Box<geng_iterator>,
 }
 
 impl GengIterator {
     fn new(n: usize) -> GengIterator {
-        unsafe {
-            geng_iterator_init(ptr::null(), n as i32);
-        }
-        GengIterator { size: n }
+        let iter = unsafe {
+            let iter: *mut geng_iterator = ptr::null_mut();
+            geng_iterator_create(&iter, n, 100);
+            Box::from_raw(iter)
+        };
+        GengIterator { size: n, iter }
     }
 }
 
 impl Iterator for &GengIterator {
-    type Item = Vec<i32>;
+    type Item = Vec<u32>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut g = vec![0; self.size];
         let res;
-        unsafe { res = geng_iterator_next(ptr::null(), g.as_mut_ptr()) }
+        unsafe {
+            let ptr: *const geng_iterator = &*self.iter;
+            res = geng_iterator_next(ptr, g.as_mut_ptr())
+        }
         if res {
             Some(g)
         } else {
@@ -45,12 +55,14 @@ impl Iterator for &GengIterator {
 }
 
 fn main() {
-    let gi = GengIterator::new(12);
+    let gi = GengIterator::new(2);
 
-    let q = gi.skip(1000).next();
-    println!("{:?}", q);
-    print_graph(q.unwrap(), gi.size);
-    // for i in &gi {
+    // let q = gi.take(2).collect::<Vec<_>>();
+    // println!("{:?}", q);
+    // for i in q {
     //     print_graph(i, gi.size);
     // }
+    for i in &gi {
+        print_graph(i, gi.size);
+    }
 }
